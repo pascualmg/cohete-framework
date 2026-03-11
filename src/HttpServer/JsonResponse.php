@@ -15,7 +15,7 @@ class JsonResponse implements StatusCodeInterface
         //factory
     }
 
-    public static function create(int $code = self::STATUS_OK, $payload = null): ResponseInterface
+    public static function create(int $code = self::STATUS_OK, mixed $payload = null): ResponseInterface
     {
         return new Response(
             $code,
@@ -24,7 +24,7 @@ class JsonResponse implements StatusCodeInterface
         );
     }
 
-    public static function withPayload($payload): ResponseInterface
+    public static function withPayload(mixed $payload): ResponseInterface
     {
         return self::create(200, $payload);
     }
@@ -50,7 +50,7 @@ class JsonResponse implements StatusCodeInterface
         );
     }
 
-    public static function accepted($payload = 'Accepted'): ResponseInterface
+    public static function accepted(mixed $payload = 'Accepted'): ResponseInterface
     {
         return self::create(self::STATUS_ACCEPTED, $payload);
     }

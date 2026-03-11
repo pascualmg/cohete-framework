@@ -15,7 +15,7 @@ use React\EventLoop\LoopInterface;
 class ContainerFactory
 {
     /**
-     * @param array $definitions User-provided container definitions (override framework defaults)
+     * @param array<string, mixed> $definitions User-provided container definitions (override framework defaults)
      * @param bool $isProd Enable production optimizations (compilation, proxies)
      * @param bool $useAutowiring Enable PHP-DI autowiring
      * @param string $compilationPath Path for compiled container cache
@@ -39,21 +39,39 @@ class ContainerFactory
 
         // Framework defaults (user definitions override these)
         $frameworkDefaults = [
-            LoopInterface::class => static fn () => Loop::get(),
-            LoggerInterface::class => function (ContainerInterface $_) {
+            LoopInterface::class => static fn (): LoopInterface => Loop::get(),
+            LoggerInterface::class => function (ContainerInterface $_): LoggerInterface {
                 $logger = new Logger('cohete');
                 $logger->pushHandler(
                     new StreamHandler('php://stderr')
                 );
                 return $logger;
             },
-            MessageBus::class => static fn (ContainerInterface $c) => $c->get(ReactMessageBus::class),
-            ReactMessageBus::class => static fn (ContainerInterface $c) => new ReactMessageBus(
-                $c->get(LoopInterface::class)
-            ),
-            'EventBus' => static fn (ContainerInterface $c) => new ReactMessageBus($c->get(LoopInterface::class)),
-            'CommandBus' => static fn (ContainerInterface $c) => new ReactMessageBus($c->get(LoopInterface::class)),
-            'QueryBus' => static fn (ContainerInterface $c) => new ReactMessageBus($c->get(LoopInterface::class)),
+            MessageBus::class => function (ContainerInterface $c): MessageBus {
+                /** @var MessageBus $bus */
+                $bus = $c->get(ReactMessageBus::class);
+                return $bus;
+            },
+            ReactMessageBus::class => function (ContainerInterface $c): ReactMessageBus {
+                /** @var LoopInterface $loop */
+                $loop = $c->get(LoopInterface::class);
+                return new ReactMessageBus($loop);
+            },
+            'EventBus' => function (ContainerInterface $c): ReactMessageBus {
+                /** @var LoopInterface $loop */
+                $loop = $c->get(LoopInterface::class);
+                return new ReactMessageBus($loop);
+            },
+            'CommandBus' => function (ContainerInterface $c): ReactMessageBus {
+                /** @var LoopInterface $loop */
+                $loop = $c->get(LoopInterface::class);
+                return new ReactMessageBus($loop);
+            },
+            'QueryBus' => function (ContainerInterface $c): ReactMessageBus {
+                /** @var LoopInterface $loop */
+                $loop = $c->get(LoopInterface::class);
+                return new ReactMessageBus($loop);
+            },
         ];
 
         // Framework defaults first, then user definitions (user wins)

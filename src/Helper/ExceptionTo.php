@@ -6,6 +6,9 @@ use Throwable;
 
 class ExceptionTo
 {
+    /**
+     * @return array{name: string, code: int|string, message: string, file: string, line: int, trace: array<mixed>}
+     */
     public static function array(Throwable $throwable): array
     {
         return [
@@ -15,12 +18,15 @@ class ExceptionTo
             'file' => $throwable->getFile(),
             'line' => $throwable->getLine(),
             'trace' => array_map(
-                'json_decode',
-                array_map('json_encode', $throwable->getTrace())
+                fn (mixed $item) => json_decode((string) json_encode($item), true),
+                $throwable->getTrace()
             )
         ];
     }
 
+    /**
+     * @return array{name: string, code: int|string, message: string, file: string, line: int, shortTrace: mixed}
+     */
     public static function arrayWithShortTrace(Throwable $throwable): array
     {
         return [
@@ -29,7 +35,7 @@ class ExceptionTo
             'message' => $throwable->getMessage(),
             'file' => $throwable->getFile(),
             'line' => $throwable->getLine(),
-            'shortTrace' => $throwable->getTrace()[0]
+            'shortTrace' => $throwable->getTrace()[0] ?? []
         ];
     }
 }

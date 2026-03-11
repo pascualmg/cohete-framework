@@ -8,7 +8,6 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use React\Http\Message\Response;
 use React\Promise\Deferred;
-use React\Promise\Promise;
 use React\Promise\PromiseInterface;
 use Throwable;
 
@@ -23,13 +22,19 @@ class Kernel
         $this->dispatcher = Router::fromJson($routesPath);
     }
 
+    /**
+     * @return PromiseInterface<ResponseInterface>
+     */
     public function __invoke(ServerRequestInterface $request): PromiseInterface
     {
-        return self::AsyncHandleRequest(
+        /** @var PromiseInterface<ResponseInterface> $promise */
+        $promise = self::AsyncHandleRequest(
             request: $request,
             container: $this->container,
             dispatcher: $this->dispatcher
-        )->then(
+        );
+
+        return $promise->then(
             onFulfilled: function (ResponseInterface $response): ResponseInterface {
                 return $response;
             },
@@ -39,11 +44,15 @@ class Kernel
         );
     }
 
+    /**
+     * @return PromiseInterface<ResponseInterface>
+     */
     public static function AsyncHandleRequest(
         ServerRequestInterface $request,
         ContainerInterface $container,
         Dispatcher $dispatcher
     ): PromiseInterface {
+        /** @var Deferred<ResponseInterface> $deferred */
         $deferred = new Deferred();
 
         $method = strtoupper($request->getMethod());
@@ -64,28 +73,32 @@ class Kernel
                 );
                 break;
             case Dispatcher::FOUND:
-                [$_, $httpRequestHandlerName, $params] = $routeInfo;
+                /** @var string $httpRequestHandlerName */
+                $httpRequestHandlerName = $routeInfo[1];
+                /** @var array<string, string> $params */
+                $params = $routeInfo[2];
 
                 try {
-                    $response = $container->get($httpRequestHandlerName)($request, $params);
+                    /** @var HttpRequestHandler $handler */
+                    $handler = $container->get($httpRequestHandlerName);
+                    $response = $handler($request, $params);
                 } catch (Throwable $throwable) {
                     $deferred->reject($throwable);
                     break;
                 }
 
-                $deferred->resolve(
-                    $response instanceof PromiseInterface ? $response : self::wrapWithPromise($response)
-                );
+                if ($response instanceof PromiseInterface) {
+                    /** @var PromiseInterface<ResponseInterface> $response */
+                    $response->then(
+                        fn (ResponseInterface $res) => $deferred->resolve($res),
+                        fn (Throwable $e) => $deferred->reject($e)
+                    );
+                } else {
+                    $deferred->resolve($response);
+                }
                 break;
         }
 
         return $deferred->promise();
-    }
-
-    private static function wrapWithPromise($response): PromiseInterface
-    {
-        return new Promise(function ($resolve, $_) use ($response) {
-            $resolve($response);
-        });
     }
 }
