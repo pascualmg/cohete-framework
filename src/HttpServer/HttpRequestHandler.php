@@ -8,5 +8,9 @@ use React\Promise\PromiseInterface;
 
 interface HttpRequestHandler
 {
-    public function __invoke(ServerRequestInterface $request, ?array $routeParams): ResponseInterface | PromiseInterface;
+    /**
+     * @param array<string, string>|null $routeParams
+     * @return ResponseInterface|PromiseInterface<ResponseInterface>
+     */
+    public function __invoke(ServerRequestInterface $request, ?array $routeParams): ResponseInterface|PromiseInterface;
 }

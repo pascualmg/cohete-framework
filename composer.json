@@ -35,5 +35,8 @@
     "minimum-stability": "stable",
     "config": {
         "sort-packages": true
+    },
+    "require-dev": {
+        "phpstan/phpstan": "^2.1"
     }
 }

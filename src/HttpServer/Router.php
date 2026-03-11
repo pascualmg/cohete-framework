@@ -19,6 +19,7 @@ class Router
 
         return simpleDispatcher(
             function (RouteCollector $r) use ($routesFromJsonFile) {
+                /** @var array<string, string> $routeFromJsonFile */
                 foreach ($routesFromJsonFile as $routeFromJsonFile) {
                     $r->addRoute(
                         self::toUpperWords($routeFromJsonFile['method']),
@@ -30,12 +31,20 @@ class Router
         );
     }
 
+    /**
+     * @return array<int, string>
+     */
     public static function toUpperWords(string $text): array
     {
+        $split = preg_split("/[ ,]/", strtoupper($text));
+        if ($split === false) {
+            return [];
+        }
+
         return array_values(
             array_filter(
-                preg_split("/[ ,]/", strtoupper($text)),
-                'strlen'
+                $split,
+                fn ($value) => strlen($value) > 0
             )
         );
     }
@@ -58,6 +67,9 @@ class Router
         }
     }
 
+    /**
+     * @return array<mixed>
+     */
     public static function parseJsonToArray(string $path): array
     {
         if (!file_exists($path)) {
@@ -66,7 +78,13 @@ class Router
             );
         }
         $file = file_get_contents($path);
+        if ($file === false) {
+            throw new RuntimeException(
+                "Could not read file $path",
+            );
+        }
         try {
+            /** @var array<mixed> $routesFromJsonFile */
             $routesFromJsonFile = json_decode(
                 $file,
                 true,

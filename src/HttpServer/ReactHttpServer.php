@@ -63,6 +63,7 @@ class ReactHttpServer
 
     private static function createStaticFileMiddleware(string $staticRoot): callable
     {
+        /** @var array<string, string> $mimeTypes */
         $mimeTypes = [
             'js' => 'application/javascript', 'css' => 'text/css',
             'png' => 'image/png', 'jpg' => 'image/jpeg', 'gif' => 'image/gif',
@@ -75,13 +76,18 @@ class ReactHttpServer
             $path = $request->getUri()->getPath();
             if (preg_match('/\.\w{2,5}$/', $path)) {
                 $filePath = realpath($staticRoot . $path);
-                if ($filePath && str_starts_with($filePath, realpath($staticRoot)) && is_file($filePath)) {
+                $rootPath = realpath($staticRoot);
+                if ($filePath !== false && $rootPath !== false && str_starts_with($filePath, $rootPath) && is_file($filePath)) {
                     $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
                     $mime = $mimeTypes[$ext] ?? 'application/octet-stream';
+                    $content = file_get_contents($filePath);
+                    if ($content === false) {
+                        return $next($request);
+                    }
                     return new Response(200, [
                         'Content-Type' => $mime,
                         'Cache-Control' => 'public, max-age=86400',
-                    ], file_get_contents($filePath));
+                    ], $content);
                 }
             }
             return $next($request);
