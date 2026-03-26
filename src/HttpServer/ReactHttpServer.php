@@ -58,7 +58,9 @@ class ReactHttpServer
         $httpServer->listen($socket);
         echo "server listening on " . $socket->getAddress();
 
-        $httpServer->on('error', 'var_dump');
+        $httpServer->on('error', function (\Throwable $e) {
+            fwrite(STDERR, "[HTTP Error] " . $e->getMessage() . "\n");
+        });
     }
 
     private static function createStaticFileMiddleware(string $staticRoot): callable
