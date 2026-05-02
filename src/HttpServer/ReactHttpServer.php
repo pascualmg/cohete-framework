@@ -9,10 +9,21 @@ use React\EventLoop\Loop;
 use React\EventLoop\LoopInterface;
 use React\Http\HttpServer;
 use React\Http\Message\Response;
+use React\Http\Middleware\RequestBodyBufferMiddleware;
+use React\Http\Middleware\StreamingRequestMiddleware;
 use React\Socket\SocketServer;
 
 class ReactHttpServer
 {
+    /** @var array<string, array{content: string, mime: string}> */
+    private static array $fileCache = [];
+
+    /**
+     * @param array<callable> $middlewares User-provided middlewares (inserted between ClientIP and kernel)
+     * @param int $maxBodySize Override del cap de buffer de body (default 64KB de React).
+     *                         Si >0, mete StreamingRequestMiddleware + RequestBodyBufferMiddleware($maxBodySize)
+     *                         al principio del stack para bypassear el cap automatico.
+     */
     public static function init(
         string $host,
         string $port,
@@ -20,6 +31,8 @@ class ReactHttpServer
         ?LoopInterface $loop = null,
         ?string $staticRoot = null,
         bool $isDevelopment = false,
+        array $middlewares = [],
+        int $maxBodySize = 0,
     ): void {
         if (null === $loop) {
             $loop = Loop::get();
@@ -29,31 +42,36 @@ class ReactHttpServer
             sprintf("%s:%s", $host, $port),
         );
 
-        $clientIPMiddleware = new PSR15Middleware(
-            (new ClientIp())
-        );
+        $stack = [];
 
-        $requestDumperMiddleware = new PSR15Middleware(
-            new RequestDumper()
-        );
-
-        $responseDumperMiddleware = new PSR15Middleware(
-            new ResponseDumper()
-        );
-
-        $middlewares = [
-            $clientIPMiddleware,
-        ];
-
-        if ($staticRoot !== null) {
-            $middlewares[] = self::createStaticFileMiddleware($staticRoot);
+        // Override del cap de body buffer (default React: 64KB).
+        // StreamingRequestMiddleware desactiva el auto-buffer; el RequestBodyBufferMiddleware
+        // explicito controla el limite real.
+        if ($maxBodySize > 0) {
+            $stack[] = new StreamingRequestMiddleware();
+            $stack[] = new RequestBodyBufferMiddleware($maxBodySize);
         }
 
-        $middlewares[] = $requestDumperMiddleware;
-        $middlewares[] = $responseDumperMiddleware;
-        $middlewares[] = $kernel;
+        $stack[] = new PSR15Middleware(new ClientIp());
 
-        $httpServer = new HttpServer(...$middlewares);
+        if ($staticRoot !== null) {
+            $stack[] = self::createStaticFileMiddleware($staticRoot);
+        }
+
+        // User-provided middlewares
+        foreach ($middlewares as $mw) {
+            $stack[] = $mw;
+        }
+
+        // Dumpers only in development
+        if ($isDevelopment) {
+            $stack[] = new PSR15Middleware(new RequestDumper());
+            $stack[] = new PSR15Middleware(new ResponseDumper());
+        }
+
+        $stack[] = $kernel;
+
+        $httpServer = new HttpServer(...$stack);
 
         $httpServer->listen($socket);
         echo "server listening on " . $socket->getAddress();
@@ -77,6 +95,15 @@ class ReactHttpServer
         return function (ServerRequestInterface $request, callable $next) use ($staticRoot, $mimeTypes) {
             $path = $request->getUri()->getPath();
             if (preg_match('/\.\w{2,5}$/', $path)) {
+                // Serve from in-memory cache if available
+                if (isset(self::$fileCache[$path])) {
+                    $cached = self::$fileCache[$path];
+                    return new Response(200, [
+                        'Content-Type' => $cached['mime'],
+                        'Cache-Control' => 'public, max-age=86400',
+                    ], $cached['content']);
+                }
+
                 $filePath = realpath($staticRoot . $path);
                 $rootPath = realpath($staticRoot);
                 if ($filePath !== false && $rootPath !== false && str_starts_with($filePath, $rootPath) && is_file($filePath)) {
@@ -86,6 +113,10 @@ class ReactHttpServer
                     if ($content === false) {
                         return $next($request);
                     }
+
+                    // Cache in memory for subsequent requests
+                    self::$fileCache[$path] = ['content' => $content, 'mime' => $mime];
+
                     return new Response(200, [
                         'Content-Type' => $mime,
                         'Cache-Control' => 'public, max-age=86400',
@@ -94,5 +125,10 @@ class ReactHttpServer
             }
             return $next($request);
         };
+    }
+
+    public static function clearFileCache(): void
+    {
+        self::$fileCache = [];
     }
 }
